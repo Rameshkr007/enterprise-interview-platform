@@ -2,7 +2,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WsMessage } from '@/lib/types'
 
-const WS_BASE = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000'
+export function getWsBase(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL
+  }
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return 'wss://enterprise-interview-platform.onrender.com'
+  }
+  return 'ws://localhost:8000'
+}
+
+const WS_BASE = getWsBase()
 
 export type WsStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -27,7 +37,7 @@ export function useWebSocket(
       if (wsRef.current?.readyState === WebSocket.OPEN) return
 
       setStatus('connecting')
-      const url = `${WS_BASE}/ws/interview/${sessionId}?token=${encodeURIComponent(token)}`
+      const url = `${getWsBase()}/ws/interview/${sessionId}?token=${encodeURIComponent(token)}`
       const ws = new WebSocket(url)
       ws.binaryType = 'arraybuffer'
 

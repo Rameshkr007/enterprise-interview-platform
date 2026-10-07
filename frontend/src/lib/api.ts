@@ -90,7 +90,17 @@ import type {
   MaintenanceModeResponse,
 } from './types'
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1'
+export function getBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL
+  }
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return 'https://enterprise-interview-platform.onrender.com/api/v1'
+  }
+  return 'http://localhost:8000/api/v1'
+}
+
+const BASE_URL = getBaseUrl()
 
 let isRefreshing = false
 let failedQueue: Array<{
@@ -117,6 +127,7 @@ function createAxiosInstance(): AxiosInstance {
   })
 
   instance.interceptors.request.use((config) => {
+    config.baseURL = getBaseUrl()
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('access_token')
       if (token) {
