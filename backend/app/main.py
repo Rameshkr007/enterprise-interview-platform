@@ -106,6 +106,11 @@ def create_app() -> FastAPI:
 
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
+    @app.on_event("startup")
+    async def startup_event() -> None:
+        from app.core.db_init import auto_init_database
+        await auto_init_database()
+
     @app.on_event("shutdown")
     async def shutdown_event() -> None:
         from app.core.redis import close_redis_pool
