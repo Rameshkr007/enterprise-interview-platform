@@ -11,7 +11,7 @@ from sqlalchemy import String, Text, Integer, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import JSON, UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from typing import Annotated
 
 from app.core.dependencies import CurrentUser
@@ -181,13 +181,14 @@ async def update_application(
     return {"id": str(app_obj.id), "status": app_obj.status, "updated": True}
 
 
-@router.delete("/{app_id}", status_code=204)
+@router.delete("/{app_id}", status_code=204, response_class=Response)
 async def delete_application(
     app_id: UUID,
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> None:
+) -> Response:
     app_obj = await db.get(JobApplication, app_id)
     if app_obj is None or app_obj.user_id != current_user.id:
         raise NotFoundException("Application not found")
     await db.delete(app_obj)
+    return Response(status_code=204)
