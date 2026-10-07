@@ -33,6 +33,8 @@ def _build_engine(test_mode: bool = False) -> AsyncEngine:
         kwargs["pool_timeout"] = settings.DB_POOL_TIMEOUT
         kwargs["pool_pre_ping"] = True
         kwargs["pool_recycle"] = 3600
+        if "pooler.supabase.com" in str(settings.DATABASE_URL) or "supabase" in str(settings.DATABASE_URL):
+            kwargs["connect_args"] = {"prepared_statement_cache_size": 0}
 
     return create_async_engine(str(settings.DATABASE_URL), **kwargs)
 

@@ -117,6 +117,16 @@ def create_app() -> FastAPI:
         await dispose_engine()
         await close_redis_pool()
 
+    @app.get("/", tags=["Root"], include_in_schema=False)
+    async def root() -> dict:
+        return {
+            "name": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "status": "online",
+            "health": "/health",
+            "api_prefix": settings.API_PREFIX,
+        }
+
     @app.get("/health", tags=["Health"], include_in_schema=False)
     async def health() -> dict:
         from app.database import check_database_health
