@@ -1,0 +1,169 @@
+# ==============================================================================
+# Production Docker Compose Orchestrator
+# Enterprise AI Mock Interview & Semantic ATS Platform
+# Multi-container stack: Postgres (pgvector), Redis, Backend, Frontend, Caddy SSL
+# ==============================================================================
+
+version: '3.9'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: interview_postgres_prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prod_secure_pg_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-interview_platform}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - prod_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d interview_platform']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+    networks:
+      - production_internal_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: interview_redis_prod
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 1024mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 300
+    volumes:
+      - prod_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+    networks:
+      - production_internal_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: interview_backend_prod
+    environment:
+      ENV: production
+      DEBUG: 'false'
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-prod_secure_pg_password_change_me}@postgres:5432/${POSTGRES_DB:-interview_platform}
+      DATABASE_POOL_SIZE: 20
+      DATABASE_MAX_OVERFLOW: 10
+      REDIS_URL: redis://redis:6379/0
+      REDIS_POOL_SIZE: 20
+      SECRET_KEY: ${SECRET_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-large}
+      OPENAI_EMBEDDING_DIMENSIONS: 3072
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-enterprise-interview-assets}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/health']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+    networks:
+      - production_internal_net
+      - production_public_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: interview_frontend_prod
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://${DOMAIN_NAME:-interview.enterprise.internal}/api/v1
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3000/']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1536M
+    networks:
+      - production_internal_net
+      - production_public_net
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: interview_caddy_prod
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - prod_caddy_data:/data
+      - prod_caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    networks:
+      - production_public_net
+
+volumes:
+  prod_postgres_data:
+    name: interview_prod_postgres_data
+  prod_redis_data:
+    name: interview_prod_redis_data
+  prod_caddy_data:
+    name: interview_prod_caddy_data
+  prod_caddy_config:
+    name: interview_prod_caddy_config
+
+networks:
+  production_internal_net:
+    driver: bridge
+    internal: true
+  production_public_net:
+    driver: bridge

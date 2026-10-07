@@ -1,0 +1,67 @@
+# ==============================================================================
+# Production Caddy Reverse Proxy & Automated TLS Termination
+# Enterprise AI Mock Interview & Semantic ATS Platform
+# ==============================================================================
+
+{
+    admin off
+    auto_https disable_redirects
+}
+
+{$DOMAIN_NAME:localhost} {
+    # Logging configuration
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+
+    # Compression
+    encode zstd gzip
+
+    # Enterprise Security Headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(self), geolocation=()"
+        -Server
+    }
+
+    # API Endpoints & Health Check -> FastAPI Backend
+    handle /api/* {
+        reverse_proxy backend:8000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up Host {upstream_hostport}
+        }
+    }
+
+    # WebSockets (Real-time DSP audio & streaming STT) -> FastAPI Backend
+    handle /ws/* {
+        reverse_proxy backend:8000 {
+            header_up Upgrade {>Upgrade}
+            header_up Connection {>Connection}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Backend Health Probe
+    handle /health {
+        reverse_proxy backend:8000
+    }
+
+    # Next.js Frontend (SSR & Static Assets)
+    handle /* {
+        reverse_proxy frontend:3000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+}
