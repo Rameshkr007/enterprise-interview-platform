@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, model_validator
+from pydantic import Field, PostgresDsn, RedisDsn, model_validator, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +41,24 @@ class Settings(BaseSettings):
     # ── Redis ─────────────────────────────────────────────────────────────────
     REDIS_URL: RedisDsn = Field(default="redis://localhost:6379/0")
     REDIS_WS_CHANNEL_PREFIX: str = "ws:interview:"
+
+    @field_validator("REDIS_URL", mode="before")
+    @classmethod
+    def clean_redis_url(cls, v: object) -> object:
+        if isinstance(v, str):
+            v = v.strip()
+            # If user accidentally pasted the redis-cli command from dashboard
+            if "-u " in v:
+                v = v.split("-u ")[-1].strip().strip('"').strip("'")
+            elif v.startswith("redis-cli"):
+                for part in v.split():
+                    if part.startswith("redis://") or part.startswith("rediss://"):
+                        v = part
+                        break
+            # Upstash requires TLS (rediss://)
+            if v.startswith("redis://") and "upstash.io" in v:
+                v = "rediss://" + v[len("redis://"):]
+        return v
 
     # ── Object Storage (S3-compatible) ────────────────────────────────────────
     S3_BUCKET_NAME: str = "interview-platform"
