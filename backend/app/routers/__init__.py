@@ -27,6 +27,7 @@ from app.routers import (
     diagnostics,
     performance,
     deployment,
+    payments,
     websocket_router,
 )
 
@@ -59,5 +60,6 @@ __all__ = [
     "diagnostics",
     "performance",
     "deployment",
+    "payments",
 ]
 

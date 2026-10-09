@@ -16,7 +16,7 @@ from app.middleware.rate_limiter import RateLimitMiddleware
 from app.middleware.server_timing import ServerTimingMiddleware
 from app.routers import auth, ats, interview, reports, websocket_router, organization, resumes
 from app.routers import analytics, coding, resume_builder, gamification, job_tracker, negotiation, system_design, behavioral
-from app.routers import learning, candidate_twin, recruiter, ai_governance, resilience, observability, enterprise_analytics, audit, skill_graph, security, diagnostics, performance, deployment
+from app.routers import learning, candidate_twin, recruiter, ai_governance, resilience, observability, enterprise_analytics, audit, skill_graph, security, diagnostics, performance, deployment, payments
 from fastapi.responses import PlainTextResponse
 
 
@@ -98,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(diagnostics.router, prefix=prefix)
     app.include_router(performance.router, prefix=prefix)
     app.include_router(deployment.router, prefix=prefix)
+    app.include_router(payments.router, prefix=prefix)
 
     # ── Query Profiler Hook ──────────────────────────────────────────────────
     from app.database import engine

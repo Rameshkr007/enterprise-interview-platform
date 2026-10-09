@@ -739,6 +739,57 @@ export const deploymentApi = {
       .then((r) => r.data),
 }
 
+export interface PaymentPlan {
+  id: string
+  name: string
+  monthly_price: number
+  yearly_price: number
+  credits: number
+  automations: number
+  features: string[]
+}
+
+export interface CheckoutSessionData {
+  session_id: string
+  plan_id: string
+  amount: number
+  currency: string
+  billing_cycle: string
+  status: string
+  checkout_url: string
+  client_secret: string
+}
+
+export interface SubscriptionData {
+  user_id: string
+  tier: string
+  credits_remaining: number
+  credits_total: number
+  billing_cycle: string
+  status: string
+  expires_at: string
+  features: string[]
+}
+
+export const paymentApi = {
+  getPlans: () =>
+    api.get<{ plans: PaymentPlan[] }>('/payments/plans').then((r) => r.data.plans),
+
+  createCheckoutSession: (data: {
+    plan_id: string
+    billing_cycle?: 'monthly' | 'yearly'
+    payment_method?: 'card' | 'upi' | 'netbanking' | 'test'
+    currency?: string
+  }) => api.post<CheckoutSessionData>('/payments/create-checkout-session', data).then((r) => r.data),
+
+  verifyPayment: (data: { session_id: string; payment_id?: string; signature?: string }) =>
+    api.post<{ success: boolean; message: string; subscription: SubscriptionData }>('/payments/verify', data).then((r) => r.data),
+
+  getSubscription: () =>
+    api.get<SubscriptionData>('/payments/subscription').then((r) => r.data),
+}
+
+
 
 
 
