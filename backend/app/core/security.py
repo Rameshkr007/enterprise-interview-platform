@@ -72,7 +72,17 @@ def create_refresh_token(user_id: UUID, org_id: UUID | None = None) -> str:
 
 def decode_token(token: str, expected_type: str = "access") -> dict[str, Any]:
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        # Sanitize token
+        cleaned_token = token.strip().strip('"').strip("'")
+        if cleaned_token.lower().startswith("bearer "):
+            cleaned_token = cleaned_token[7:].strip()
+
+        payload = jwt.decode(
+            cleaned_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"leeway": 300},  # 5 minutes clock-skew leeway between frontend/backend
+        )
         token_type = payload.get("type")
         if token_type != expected_type:
             raise AuthenticationException(f"Invalid token type: expected {expected_type}, got {token_type}")

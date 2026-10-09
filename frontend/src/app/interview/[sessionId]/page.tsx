@@ -6,6 +6,7 @@ import { useInterviewStore } from '@/store/interview'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAudioCapture } from '@/hooks/useAudioCapture'
 import { useAuthStore } from '@/store/auth'
+import { authApi } from '@/lib/api'
 import type { WsMessage } from '@/lib/types'
 
 import { AIInterviewerAvatar } from '@/components/interview/AIInterviewerAvatar'
@@ -56,12 +57,39 @@ export default function InterviewRoomPage() {
     speechRateWpm: 135,
   })
 
+  const handleAutoReauth = useCallback(async () => {
+    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refresh_token') : null
+    if (!refreshToken) {
+      router.push(`/login?redirect=/interview/${sessionId}`)
+      return
+    }
+    try {
+      const tokens = await authApi.refresh(refreshToken)
+      localStorage.setItem('access_token', tokens.access_token)
+      localStorage.setItem('refresh_token', tokens.refresh_token)
+      useAuthStore.setState({ access_token: tokens.access_token, refresh_token: tokens.refresh_token })
+      setWsError(null)
+      connect(sessionId, tokens.access_token)
+    } catch {
+      setWsError('Your login session has expired. Please log in again.')
+    }
+  }, [sessionId, router])
+
   const onWsMessage = useCallback(
     (msg: WsMessage) => {
       handleWsMessage(msg)
       if (msg.type === 'error') {
-        setWsError(msg.payload.message as string)
+        const errorText = (msg.payload?.message as string) || 'Connection error'
+        setWsError(errorText)
+        if (
+          msg.payload?.code === 'UNAUTHORIZED' ||
+          errorText.toLowerCase().includes('auth') ||
+          errorText.toLowerCase().includes('token')
+        ) {
+          handleAutoReauth()
+        }
       } else if (msg.type === 'question') {
+        setWsError(null)
         setIsAiSpeaking(true)
         if (msg.payload.audio_metrics) {
           const m = msg.payload.audio_metrics as Record<string, number>
@@ -74,19 +102,25 @@ export default function InterviewRoomPage() {
         }
       }
     },
-    [handleWsMessage]
+    [handleWsMessage, handleAutoReauth]
   )
 
   const { status, connect, sendAudioChunk, sendAudioEnd } = useWebSocket(onWsMessage)
   const { startRecording, stopRecording, error: audioError } = useAudioCapture()
 
   useEffect(() => {
-    if (access_token && sessionId) {
-      connect(sessionId, access_token)
+    const token = (typeof window !== 'undefined' ? localStorage.getItem('access_token') : null) || access_token
+    if (!token) {
+      router.push(`/login?redirect=/interview/${sessionId}`)
+      return
+    }
+
+    if (sessionId) {
+      connect(sessionId, token)
       setConnected(true)
     }
     return () => reset()
-  }, [access_token, sessionId, connect, reset])
+  }, [access_token, sessionId, connect, reset, router])
 
   useEffect(() => {
     if (status === 'connected') setConnected(true)
@@ -170,8 +204,32 @@ export default function InterviewRoomPage() {
 
       {/* Error Alert */}
       {(wsError || audioError) && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm">
-          {wsError || audioError}
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse shrink-0" />
+            <span className="leading-snug">{wsError || audioError}</span>
+          </div>
+          {(wsError?.toLowerCase().includes('auth') ||
+            wsError?.toLowerCase().includes('token') ||
+            wsError?.toLowerCase().includes('login') ||
+            wsError?.toLowerCase().includes('session')) && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleAutoReauth}
+                className="px-3.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold border border-rose-500/40 transition-colors"
+              >
+                Reconnect Session
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/login?redirect=/interview/${sessionId}`)}
+                className="px-3.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-colors"
+              >
+                Sign In Again
+              </button>
+            </div>
+          )}
         </div>
       )}
 

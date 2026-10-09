@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # ── Security ─────────────────────────────────────────────────────────────
     SECRET_KEY: str = Field(..., min_length=32)
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours for seamless candidate interview loops
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # ── Database ─────────────────────────────────────────────────────────────

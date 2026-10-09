@@ -34,10 +34,25 @@ export function useWebSocket(
 
   const connect = useCallback(
     (sessionId: string, token: string) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) return
+      // Pick freshest token from localStorage if available
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+      const rawToken = storedToken || token
+      if (!rawToken || rawToken === 'null' || rawToken === 'undefined') {
+        setStatus('error')
+        return
+      }
+
+      // Close previous connection if active before re-connecting
+      if (wsRef.current) {
+        try {
+          wsRef.current.close()
+        } catch {}
+        wsRef.current = null
+      }
 
       setStatus('connecting')
-      const url = `${getWsBase()}/ws/interview/${sessionId}?token=${encodeURIComponent(token)}`
+      const cleanToken = rawToken.replace(/^Bearer\s+/i, '').trim().replace(/^["']|["']$/g, '')
+      const url = `${getWsBase()}/ws/interview/${sessionId}?token=${encodeURIComponent(cleanToken)}`
       const ws = new WebSocket(url)
       ws.binaryType = 'arraybuffer'
 

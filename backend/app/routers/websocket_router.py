@@ -40,13 +40,24 @@ def _get_engine() -> InterviewEngine:
 
 
 async def _authenticate_ws(websocket: WebSocket) -> tuple[str | None, str | None]:
-    """Extract and validate JWT from query param or auth header. Returns (user_id, role)."""
+    """Extract and validate JWT from query param, auth header, or subprotocol. Returns (user_id, role)."""
     token = websocket.query_params.get("token")
+    if token in ("undefined", "null", ""):
+        token = None
+
     if not token:
-        # Check subprotocols or query param
         auth_header = websocket.headers.get("authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:]
+
+    if not token:
+        subproto = websocket.headers.get("sec-websocket-protocol")
+        if subproto:
+            parts = [p.strip() for p in subproto.split(",")]
+            for p in parts:
+                if len(p) > 20 and not p.lower().startswith("bearer"):
+                    token = p
+                    break
 
     if not token:
         return None, None
@@ -54,7 +65,8 @@ async def _authenticate_ws(websocket: WebSocket) -> tuple[str | None, str | None
     try:
         payload = decode_access_token(token)
         return payload.get("sub"), payload.get("role")
-    except Exception:
+    except Exception as exc:
+        log.warning("ws_token_decode_failed", error=str(exc))
         return None, None
 
 
