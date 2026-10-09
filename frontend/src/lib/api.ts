@@ -286,6 +286,9 @@ export const interviewApi = {
   getSession: (id: string) =>
     api.get<InterviewSession>(`/interview/session/${id}`).then((r) => r.data),
 
+  getSessions: () =>
+    api.get<InterviewSession[]>('/interview/sessions').then((r) => r.data),
+
   getState: (id: string) =>
     api.get<SessionStateResponse>(`/interview/session/${id}/state`).then((r) => r.data),
 

@@ -174,6 +174,23 @@ async def create_session(
     return session
 
 
+@router.get("/sessions", response_model=list[SessionResponse])
+async def list_user_sessions(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = 20,
+) -> list[InterviewSession]:
+    """List recent interview sessions for current user."""
+    stmt = (
+        select(InterviewSession)
+        .where(InterviewSession.user_id == current_user.id)
+        .order_by(InterviewSession.created_at.desc())
+        .limit(limit)
+    )
+    res = await db.execute(stmt)
+    return list(res.scalars().all())
+
+
 @router.get("/session/{session_id}", response_model=SessionResponse)
 async def get_session(
     session_id: UUID,
@@ -187,6 +204,7 @@ async def get_session(
     if session.user_id != current_user.id and current_user.role.value not in ("admin", "recruiter"):
         raise ForbiddenException("Access denied to interview session")
     return session
+
 
 
 @router.get("/session/{session_id}/state", response_model=SessionStateResponse)
