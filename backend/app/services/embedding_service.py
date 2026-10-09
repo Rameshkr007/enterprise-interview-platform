@@ -41,7 +41,16 @@ class EmbeddingService:
         if not text.strip():
             raise EmbeddingServiceException("Cannot embed empty text")
 
-        if settings.OPENAI_API_KEY.startswith("sk-your") or settings.OPENAI_API_KEY.startswith("mock"):
+        key = (settings.OPENAI_API_KEY or "").lower()
+        if (
+            not key
+            or key.startswith("sk-your")
+            or key.startswith("mock")
+            or "mock" in key
+            or "demo" in key
+            or "dummy" in key
+            or len(key) < 25
+        ):
             import hashlib
             import numpy as np
             seed = int(hashlib.sha256(text.encode("utf-8")).hexdigest()[:8], 16)

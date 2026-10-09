@@ -128,6 +128,9 @@ function createAxiosInstance(): AxiosInstance {
 
   instance.interceptors.request.use((config) => {
     config.baseURL = getBaseUrl()
+    if (typeof window !== 'undefined' && config.data instanceof FormData) {
+      delete config.headers['Content-Type']
+    }
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('access_token')
       if (token) {
@@ -248,9 +251,7 @@ export const atsApi = {
     const form = new FormData()
     form.append('file', file)
     return api
-      .post<{ resume_id: string; word_count: number }>('/ats/resume', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post<{ resume_id: string; word_count: number }>('/ats/resume', form)
       .then((r) => r.data)
   },
 
@@ -321,9 +322,7 @@ export const resumeIntelligenceApi = {
     const form = new FormData()
     form.append('file', file)
     return api
-      .post<ResumeUploadResponse>('/resumes/upload', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post<ResumeUploadResponse>('/resumes/upload', form)
       .then((r) => r.data)
   },
 

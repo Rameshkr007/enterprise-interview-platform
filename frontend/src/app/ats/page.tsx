@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { atsApi } from '@/lib/api'
 import type { AtsAnalysisResult } from '@/lib/types'
@@ -47,11 +47,27 @@ export default function AtsPage() {
   const [step, setStep] = useState<'upload' | 'analyzing' | 'result'>('upload')
   const [result, setResult] = useState<AtsAnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true)
   const router = useRouter()
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('access_token')
+      setIsLoggedIn(!!token)
+    }
+  }, [])
 
   async function handleAnalyze() {
     if (!file || !jdText.trim()) return
     setError(null)
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+    if (!token) {
+      setError('Please log in first to analyze your resume.')
+      router.push('/login')
+      return
+    }
+
     setStep('analyzing')
     try {
       const { resume_id } = await atsApi.uploadResume(file)
@@ -60,8 +76,30 @@ export default function AtsPage() {
       setResult(analysis)
       setStep('result')
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Analysis failed'
-      setError(msg)
+      const axiosErr = err as {
+        response?: {
+          status?: number
+          data?: { detail?: string | Array<{ msg: string; message?: string }>; message?: string }
+        }
+        message?: string
+      }
+      if (axiosErr?.response?.status === 401) {
+        setError('Your login session expired. Please log in again to continue.')
+        router.push('/login')
+        return
+      }
+      let errorMsg = 'Analysis failed. Please check your network and try again.'
+      const detail = axiosErr?.response?.data?.detail
+      if (typeof detail === 'string') {
+        errorMsg = detail
+      } else if (Array.isArray(detail) && detail[0]) {
+        errorMsg = detail[0].msg || detail[0].message || 'Validation error'
+      } else if (axiosErr?.response?.data?.message) {
+        errorMsg = axiosErr.response.data.message
+      } else if (axiosErr?.message) {
+        errorMsg = axiosErr.message
+      }
+      setError(errorMsg)
       setStep('upload')
     }
   }
@@ -166,6 +204,18 @@ export default function AtsPage() {
       <p className="text-slate-400 mb-10">
         Upload your resume and paste a job description. We compute semantic similarity using PGVector embeddings.
       </p>
+
+      {!isLoggedIn && (
+        <div className="p-4 mb-6 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm flex items-center justify-between">
+          <span>You must be signed in to analyze resumes with PGVector.</span>
+          <button
+            onClick={() => router.push('/login')}
+            className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-900 font-semibold text-xs hover:bg-amber-400 transition"
+          >
+            Sign In Now
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 mb-6 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
