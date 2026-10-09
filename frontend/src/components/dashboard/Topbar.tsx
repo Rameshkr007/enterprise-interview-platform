@@ -12,6 +12,7 @@ import {
   Command,
   CheckCircle2,
   ShieldCheck,
+  Menu,
 } from 'lucide-react'
 
 interface TopbarProps {
@@ -22,6 +23,7 @@ interface TopbarProps {
   onOpenCommandPalette: () => void
   onOpenUpgrade: () => void
   onLogout: () => void
+  onOpenMobileMenu?: () => void
 }
 
 export default function Topbar({
@@ -32,6 +34,7 @@ export default function Topbar({
   onOpenCommandPalette,
   onOpenUpgrade,
   onLogout,
+  onOpenMobileMenu,
 }: TopbarProps) {
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -40,22 +43,36 @@ export default function Topbar({
   const firstName = userName?.split(' ')[0] || 'Engineer'
 
   return (
-    <header className="h-18 px-6 py-4 border-b border-white/[0.06] bg-[#070814]/85 backdrop-blur-xl flex items-center justify-between gap-4 sticky top-0 z-20">
-      {/* Search Input triggering Command Palette */}
-      <div className="relative flex-1 max-w-md">
-        <button
-          type="button"
-          onClick={onOpenCommandPalette}
-          className="w-full flex items-center justify-between px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15] text-xs text-slate-400 text-left transition-all group"
-        >
-          <div className="flex items-center gap-2.5">
-            <Search className="w-4 h-4 text-slate-400 group-hover:text-cyan-400 transition-colors" />
-            <span>Search interviews, modules, skills...</span>
-          </div>
-          <kbd className="text-[10px] font-mono text-slate-400 bg-white/[0.08] px-2 py-0.5 rounded border border-white/10 flex items-center gap-1">
-            <Command className="w-3 h-3" /> K
-          </kbd>
-        </button>
+    <header className="h-16 px-4 sm:px-6 py-3 border-b border-white/[0.06] bg-[#070814]/90 backdrop-blur-xl flex items-center justify-between gap-3 sticky top-0 z-20 shrink-0">
+      {/* Left: Mobile Menu Trigger + Search Input */}
+      <div className="flex items-center gap-2.5 flex-1 max-w-md">
+        {onOpenMobileMenu && (
+          <button
+            type="button"
+            onClick={onOpenMobileMenu}
+            aria-label="Open Navigation Menu"
+            className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+
+        {/* Search Input triggering Command Palette */}
+        <div className="relative flex-1">
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15] text-xs text-slate-400 text-left transition-all group"
+          >
+            <div className="flex items-center gap-2 truncate">
+              <Search className="w-4 h-4 text-slate-400 group-hover:text-cyan-400 transition-colors shrink-0" />
+              <span className="truncate">Search modules, skills...</span>
+            </div>
+            <kbd className="hidden sm:flex text-[10px] font-mono text-slate-400 bg-white/[0.08] px-2 py-0.5 rounded border border-white/10 items-center gap-1 shrink-0 ml-2">
+              <Command className="w-3 h-3" /> K
+            </kbd>
+          </button>
+        </div>
       </div>
 
       {/* Live System Status Badges */}

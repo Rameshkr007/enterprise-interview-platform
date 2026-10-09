@@ -26,6 +26,7 @@ export default function DashboardPage() {
 
   // Layout & Navigation State
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
 
   // Subscription & Tier State
@@ -94,16 +95,18 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#070814] text-slate-100 selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* 1. Collapsible Sidebar Navigation */}
+    <div className="flex h-screen w-full bg-[#070814] text-slate-100 overflow-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
+      {/* 1. Collapsible Sidebar Navigation (Desktop Fixed + Mobile Off-Canvas Drawer) */}
       <Sidebar
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         onOpenUpgrade={() => handleOpenUpgrade('pro')}
+        isMobileOpen={isMobileMenuOpen}
+        onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
 
-      {/* 2. Main Viewport & Content Column */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      {/* 2. Main Viewport & Scroll Container: strictly handles single smooth vertical scroll */}
+      <div className="flex-1 h-screen flex flex-col min-w-0 overflow-y-auto overflow-x-hidden">
         {/* Top Navigation Bar */}
         <Topbar
           userName={user?.full_name || 'Candidate'}
@@ -113,10 +116,11 @@ export default function DashboardPage() {
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           onOpenUpgrade={() => handleOpenUpgrade('pro')}
           onLogout={logout}
+          onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
         />
 
         {/* Dashboard Main Scrollable Body */}
-        <main className="flex-1 p-6 sm:p-8 space-y-8 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto w-full overflow-x-hidden">
           {/* Section A: Welcome & Career Overview with 3D Holographic Brain */}
           <WelcomeHeader
             userName={user?.full_name || 'Senior Engineer'}

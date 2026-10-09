@@ -127,9 +127,9 @@ export default function ActivityTimeline() {
                   >
                     {isCompleted ? <CheckCircle className="w-5 h-5" /> : <PlayCircle className="w-5 h-5" />}
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold text-white capitalize">
+                      <span className="text-sm font-bold text-white capitalize break-words">
                         {session.current_topic || 'Staff System Architecture & Behavioral'}
                       </span>
                       <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">

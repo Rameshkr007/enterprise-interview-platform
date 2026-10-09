@@ -139,10 +139,10 @@ export default function SkillHeatmap() {
         </div>
 
         {/* SVG Interactive Trend Visual */}
-        <div className="w-full relative flex-1 flex flex-col justify-center">
+        <div className="w-full relative flex-1 flex flex-col justify-center overflow-hidden">
           <svg
             viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-            className="w-full h-40 overflow-visible"
+            className="w-full h-40 overflow-hidden"
             preserveAspectRatio="none"
           >
             <defs>

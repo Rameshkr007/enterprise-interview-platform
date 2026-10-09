@@ -21,9 +21,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
       </head>
-      <body>
+      <body className="w-full max-w-full overflow-x-hidden">
         <QueryProvider>
-          <main className="relative z-10 min-h-screen">{children}</main>
+          <main className="relative z-10 min-h-screen w-full max-w-full overflow-x-hidden">{children}</main>
         </QueryProvider>
       </body>
     </html>

@@ -65,10 +65,14 @@ export default function WelcomeHeader({
 
           {/* Recommended Next Action Chip */}
           <div className="pt-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/[0.08] text-[11px] font-mono text-slate-300">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>Recommended Next Action:</span>
-              <span className="text-amber-300 font-semibold">Complete Distributed Consensus Loop in System Design</span>
+            <div className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/[0.08] text-[11px] font-mono text-slate-300 max-w-full">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Recommended Next Action:</span>
+              </div>
+              <span className="text-amber-300 font-semibold break-words">
+                Complete Distributed Consensus Loop in System Design
+              </span>
             </div>
           </div>
         </div>
