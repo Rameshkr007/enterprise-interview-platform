@@ -16,6 +16,7 @@ from app.models.ai_governance import AIUsageLog, OrganizationBudget, ModelTier, 
 from app.models.skill_graph import CandidateSkillMastery, CustomSkillNode, SkillRelationType
 from app.models.sm2_card import SpacedRepetitionCard
 from app.models.pii_vault import PiiVaultEntry
+from app.models.subscription import Subscription, SubscriptionStatus, PaymentTransaction
 
 __all__ = [
     "User",
@@ -57,5 +58,8 @@ __all__ = [
     "CustomSkillNode",
     "SkillRelationType",
     "SpacedRepetitionCard",
+    "Subscription",
+    "SubscriptionStatus",
+    "PaymentTransaction",
 ]
 

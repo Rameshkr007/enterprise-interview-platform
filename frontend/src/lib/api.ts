@@ -787,6 +787,9 @@ export const paymentApi = {
 
   getSubscription: () =>
     api.get<SubscriptionData>('/payments/subscription').then((r) => r.data),
+
+  askAssistant: (message: string) =>
+    api.post<{ reply: string; suggested_action?: string; action_href?: string }>('/payments/assistant-chat', { message }).then((r) => r.data),
 }
 
 
