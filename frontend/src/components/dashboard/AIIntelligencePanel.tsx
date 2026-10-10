@@ -44,7 +44,7 @@ const DETECTED_SKILL_GAPS: SkillGapItem[] = [
     level: '72% Coverage',
     priority: 'Medium',
     action: 'Launch Behavioral Mock',
-    href: '/interview',
+    href: '/interview/new',
   },
 ]
 
@@ -112,7 +112,7 @@ export default function AIIntelligencePanel() {
               </div>
             </div>
             <Link
-              href="/career-intelligence"
+              href="/resume-builder"
               className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold"
             >
               Full Analysis <ArrowRight className="w-3.5 h-3.5" />

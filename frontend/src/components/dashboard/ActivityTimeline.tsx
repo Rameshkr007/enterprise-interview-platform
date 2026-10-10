@@ -172,7 +172,7 @@ export default function ActivityTimeline() {
 
                   {isCompleted ? (
                     <Link
-                      href={`/reports/${session.id}`}
+                      href={`/report/${session.id}`}
                       className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all flex items-center gap-1.5"
                     >
                       <FileBarChart2 className="w-3.5 h-3.5" />
@@ -180,7 +180,7 @@ export default function ActivityTimeline() {
                     </Link>
                   ) : (
                     <Link
-                      href={`/interview?sessionId=${session.id}`}
+                      href={`/interview/${session.id}`}
                       className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all flex items-center gap-1.5"
                     >
                       <PlayCircle className="w-3.5 h-3.5" />
@@ -203,7 +203,7 @@ export default function ActivityTimeline() {
             Run your first adaptive AI interview simulation to generate live performance analytics, speech metrics, and debrief reports.
           </p>
           <Link
-            href="/interview"
+            href="/interview/new"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 to-blue-500 hover:opacity-95 shadow-lg shadow-cyan-500/20"
           >
             <PlayCircle className="w-4 h-4" />

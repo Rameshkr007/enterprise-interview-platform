@@ -17,6 +17,40 @@ const config: NextConfig = {
       },
     ]
   },
+  async redirects() {
+    return [
+      {
+        source: '/company-interview',
+        destination: '/company-mode',
+        permanent: false,
+      },
+      {
+        source: '/salary-negotiation',
+        destination: '/negotiation',
+        permanent: false,
+      },
+      {
+        source: '/career-intelligence',
+        destination: '/resume-builder',
+        permanent: false,
+      },
+      {
+        source: '/roadmap',
+        destination: '/learning',
+        permanent: false,
+      },
+      {
+        source: '/reports/:sessionId',
+        destination: '/report/:sessionId',
+        permanent: false,
+      },
+      {
+        source: '/reports',
+        destination: '/dashboard',
+        permanent: false,
+      },
+    ]
+  },
 }
 
 export default config
