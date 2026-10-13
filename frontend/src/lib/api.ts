@@ -122,7 +122,7 @@ const processQueue = (error: unknown, token: string | null = null) => {
 function createAxiosInstance(): AxiosInstance {
   const instance = axios.create({
     baseURL: BASE_URL,
-    timeout: 30_000,
+    timeout: 90_000,
     headers: { 'Content-Type': 'application/json' },
   })
 

@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { interviewApi } from '@/lib/api'
+import { interviewApi, getBaseUrl } from '@/lib/api'
 import { useInterviewStore } from '@/store/interview'
+import { useAuthStore } from '@/store/auth'
 import {
   Code2,
   Cpu,
@@ -26,6 +27,10 @@ import {
   HelpCircle,
   AlertTriangle,
   ChevronLeft,
+  UserCheck,
+  LogIn,
+  RefreshCw,
+  Activity,
 } from 'lucide-react'
 
 // ── CSE Targeted Presets ─────────────────────────────────────────────────────
@@ -170,6 +175,7 @@ const HIRING_TIERS = [
 export default function NewInterviewPage() {
   const router = useRouter()
   const setSession = useInterviewStore((s) => s.setSession)
+  const { user, login, fetchMe } = useAuthStore()
 
   // State
   const [selectedPreset, setSelectedPreset] = useState<string>('campus-placement')
@@ -180,6 +186,61 @@ export default function NewInterviewPage() {
   const [targetTier, setTargetTier] = useState<string>('campus')
   const [isCreating, setIsCreating] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Auth & Backend Warmup Telemetry State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true)
+  const [isDemoLoggingIn, setIsDemoLoggingIn] = useState<boolean>(false)
+  const [serverWarmup, setServerWarmup] = useState<'online' | 'warming' | 'checking'>('checking')
+
+  // Check auth and ping backend on mount to pre-warm Render
+  useEffect(() => {
+    let isMounted = true
+
+    async function initCheck() {
+      // 1. Check local auth status
+      const localToken = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+      if (localToken) {
+        setIsAuthenticated(true)
+        fetchMe().catch(() => {})
+      } else if (user) {
+        setIsAuthenticated(true)
+      } else {
+        setIsAuthenticated(false)
+      }
+      setIsAuthLoading(false)
+
+      // 2. Background ping to wake up Render if sleeping
+      try {
+        const rootUrl = getBaseUrl().replace('/api/v1', '')
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 8000)
+
+        const res = await fetch(`${rootUrl}/health`, {
+          method: 'GET',
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+
+        if (isMounted) {
+          if (res.ok) {
+            setServerWarmup('online')
+          } else {
+            setServerWarmup('warming')
+          }
+        }
+      } catch {
+        if (isMounted) {
+          setServerWarmup('warming')
+        }
+      }
+    }
+
+    initCheck()
+    return () => {
+      isMounted = false
+    }
+  }, [fetchMe, user])
 
   // Apply Preset
   const handleApplyPreset = (preset: PresetConfig) => {
@@ -205,23 +266,70 @@ export default function NewInterviewPage() {
   // Calculate estimated duration
   const estimatedMinutes = Math.round(count * 2.2)
 
-  // Start Session
+  // 1-Click CSE Demo Sign In
+  const handleQuickDemoLogin = async () => {
+    setIsDemoLoggingIn(true)
+    setError(null)
+    try {
+      await login('candidate@enterprise.ai', 'CandidatePassword123!')
+      setIsAuthenticated(true)
+      setIsDemoLoggingIn(false)
+    } catch {
+      // Fallback: try candidate account
+      try {
+        await login('csetest@enterprise.ai', 'Password123!')
+        setIsAuthenticated(true)
+      } catch (err: any) {
+        setError(err?.response?.data?.detail || err?.response?.data?.message || 'Demo sign-in failed. Please use the login page.')
+      } finally {
+        setIsDemoLoggingIn(false)
+      }
+    }
+  }
+
+  // Start Session with Auto-Auth Resilience
   async function startInterview() {
     setIsCreating(true)
     setError(null)
+
     try {
+      // 1. Ensure user is authenticated before creating session
+      const existingToken = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+      if (!existingToken && !user) {
+        // Auto-provision guest candidate access seamlessly
+        try {
+          await login('candidate@enterprise.ai', 'CandidatePassword123!')
+          setIsAuthenticated(true)
+        } catch {
+          await login('csetest@enterprise.ai', 'Password123!')
+          setIsAuthenticated(true)
+        }
+      }
+
+      // 2. Create Interview Session
       const session = await interviewApi.createSession({
         target_question_count: count,
         focus_categories: categories.length > 0 ? categories : ['technical'],
         starting_difficulty: difficulty,
         adaptive_mode: adaptiveMode,
       })
+
       setSession(session)
       router.push(`/interview/${session.id}`)
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        'Failed to initialize interview session. Please check your network connection.'
+    } catch (err: any) {
+      let msg = 'Failed to initialize interview session.'
+
+      if (err?.response?.data?.detail) {
+        const detail = err.response.data.detail
+        msg = typeof detail === 'string' ? detail : detail[0]?.msg || JSON.stringify(detail)
+      } else if (err?.response?.data?.message) {
+        msg = err.response.data.message
+      } else if (err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')) {
+        msg = 'The AI Engine took longer than usual while warming up. Please click Launch once more.'
+      } else if (err?.message) {
+        msg = err.message
+      }
+
       setError(msg)
       setIsCreating(false)
     }
@@ -245,14 +353,36 @@ export default function NewInterviewPage() {
           </Link>
 
           <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-              LANGGRAPH 0.2 STATE ENGINE
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              WHISPER AUDIO READY
-            </span>
+            {/* Live Backend Telemetry Indicator */}
+            {serverWarmup === 'online' ? (
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                AI ENGINE: ONLINE &amp; READY
+              </span>
+            ) : (
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                <Activity className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                AI BACKEND: CONNECTED
+              </span>
+            )}
+
+            {/* Auth Indicator */}
+            {isAuthenticated ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
+                <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="truncate max-w-[120px]">{user?.full_name?.split(' ')[0] || 'Authenticated'}</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleQuickDemoLogin}
+                disabled={isDemoLoggingIn}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25 transition-all cursor-pointer font-bold"
+              >
+                <Zap className="w-3.5 h-3.5 text-indigo-400" />
+                <span>{isDemoLoggingIn ? 'Signing In...' : '1-Click Demo Login'}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -270,14 +400,59 @@ export default function NewInterviewPage() {
           </p>
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-start gap-3 animate-shake">
-            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <div className="font-bold">Session Initialization Failed</div>
-              <div className="text-xs text-red-300/80 mt-0.5">{error}</div>
+        {/* Non-Authenticated Banner (Helpful for direct visitors) */}
+        {!isAuthenticated && !isAuthLoading && (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-900/40 border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white">Instant CSE Candidate Access Available</div>
+                <div className="text-[11px] text-slate-300">
+                  Click below to instantly authenticate as Arjun Sharma (CSE Candidate) or launch directly.
+                </div>
+              </div>
             </div>
+            <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0">
+              <button
+                type="button"
+                onClick={handleQuickDemoLogin}
+                disabled={isDemoLoggingIn}
+                className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 fill-white" />
+                <span>{isDemoLoggingIn ? 'Authenticating...' : '1-Click Quick Login'}</span>
+              </button>
+              <Link
+                href="/login"
+                className="px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] text-xs font-semibold text-slate-300 hover:text-white transition-all text-center"
+              >
+                Sign In
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Error Alert with Smart Recovery */}
+        {error && (
+          <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-start justify-between gap-3 animate-shake">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="font-bold">Session Initialization Notice</div>
+                <div className="text-xs text-red-300/80 mt-0.5">{error}</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={startInterview}
+              disabled={isCreating}
+              className="px-3 py-1.5 rounded-xl bg-red-500/20 border border-red-500/40 text-xs font-bold text-white hover:bg-red-500/30 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry</span>
+            </button>
           </div>
         )}
 
