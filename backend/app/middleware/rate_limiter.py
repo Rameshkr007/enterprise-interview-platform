@@ -101,13 +101,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         else:
             limit = 120
 
-        # Apply route-specific throttle only for exact matching sensitive endpoints
-        for route_pattern, r_limit in ROUTE_LIMITS.items():
-            if path == route_pattern:
-                limit = min(limit, r_limit)
-                break
-
-        # Check rate limit using sliding window
+        # Check global sliding window rate limit for this client
         allowed, remaining, retry_after = await self._check_rate_limit(client_key, limit)
 
         if not allowed:
@@ -126,6 +120,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "X-RateLimit-Reset": str(retry_after),
                 },
             )
+
+        # Check isolated route-specific bucket only if path is an explicit sensitive route
+        if path in ROUTE_LIMITS:
+            r_limit = ROUTE_LIMITS[path]
+            route_key = f"{client_key}:{path}"
+            r_allowed, _, r_retry = await self._check_rate_limit(route_key, r_limit)
+            if not r_allowed:
+                log.warning("route_rate_limit_exceeded", client_key=client_key, path=path, limit=r_limit)
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error_code": "RATE_LIMIT_EXCEEDED",
+                        "message": f"Route rate limit of {r_limit} requests per minute exceeded for this action. Please wait.",
+                        "details": {"retry_after_seconds": r_retry},
+                    },
+                    headers={
+                        "Retry-After": str(r_retry),
+                        "X-RateLimit-Limit": str(r_limit),
+                        "X-RateLimit-Remaining": "0",
+                        "X-RateLimit-Reset": str(r_retry),
+                    },
+                )
 
         response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(limit)
@@ -172,11 +188,18 @@ async def reset_rate_limit(client_key: str) -> bool:
     cleared = False
     try:
         redis = get_redis_client()
+        keys = await redis.keys(f"ratelimit:{client_key}*")
+        if keys:
+            await redis.delete(*keys)
         await redis.delete(f"ratelimit:{client_key}")
         cleared = True
     except Exception:
         pass
 
+    to_clear = [k for k in _local_rate_cache if k.startswith(client_key)]
+    for k in to_clear:
+        _local_rate_cache[k].clear()
+        cleared = True
     if client_key in _local_rate_cache:
         _local_rate_cache[client_key].clear()
         cleared = True
