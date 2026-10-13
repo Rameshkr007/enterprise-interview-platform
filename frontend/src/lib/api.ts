@@ -88,7 +88,24 @@ import type {
   DeploymentHealthCheckResponse,
   DeploymentStatusResponse,
   MaintenanceModeResponse,
+  ExtractedInterviewPlan,
+  RequirementAnalysisResponse,
+  HintResponse,
+  ExplanationResponse,
+  PauseSessionResponse,
+  RecordingSegmentResponse,
+  RecordingPlaybackResponse,
 } from './types'
+
+export type {
+  ExtractedInterviewPlan,
+  RequirementAnalysisResponse,
+  HintResponse,
+  ExplanationResponse,
+  PauseSessionResponse,
+  RecordingSegmentResponse,
+  RecordingPlaybackResponse,
+}
 
 export function getBaseUrl(): string {
   if (process.env.NEXT_PUBLIC_API_URL) {
@@ -305,6 +322,37 @@ export const interviewApi = {
 
   finalizeSession: (id: string) =>
     api.post<InterviewSession>(`/interview/session/${id}/finalize`).then((r) => r.data),
+
+  analyzeRequirements: (data: {
+    chat_history?: Array<{ role: string; content: string }>
+    message?: string
+    resume_context?: string
+    job_description_context?: string
+    syllabus_context?: string
+  }) => api.post<RequirementAnalysisResponse>('/interview/requirements/analyze', data).then((r) => r.data),
+
+  getHint: (sessionId: string, data: { turn_index: number; current_question: string; topic?: string }) =>
+    api.post<HintResponse>(`/interview/session/${sessionId}/hint`, data).then((r) => r.data),
+
+  getExplanation: (sessionId: string, data: { turn_index: number; current_question: string; candidate_answer?: string; topic?: string }) =>
+    api.post<ExplanationResponse>(`/interview/session/${sessionId}/explain`, data).then((r) => r.data),
+
+  pauseSession: (sessionId: string, action: 'pause' | 'resume', activeDurationS?: number) =>
+    api.post<PauseSessionResponse>(`/interview/session/${sessionId}/pause`, { action, active_duration_s: activeDurationS }).then((r) => r.data),
+
+  uploadRecordingSegment: (data: {
+    session_id: string
+    segment_index: number
+    duration_s: number
+    data_b64: string
+    media_type?: string
+  }) => api.post<RecordingSegmentResponse>('/interview/recordings/segment', data).then((r) => r.data),
+
+  getRecording: (sessionId: string) =>
+    api.get<RecordingPlaybackResponse>(`/interview/recordings/${sessionId}`).then((r) => r.data),
+
+  deleteRecording: (sessionId: string) =>
+    api.delete<{ success: boolean; message: string }>(`/interview/recordings/${sessionId}`).then((r) => r.data),
 }
 
 // ── Reports ────────────────────────────────────────────────────────────────────
@@ -766,6 +814,7 @@ export interface CheckoutSessionData {
 export interface SubscriptionData {
   user_id: string
   tier: string
+  plan_id?: string
   credits_remaining: number
   credits_total: number
   billing_cycle: string

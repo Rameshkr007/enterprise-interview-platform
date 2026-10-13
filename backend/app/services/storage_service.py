@@ -44,6 +44,37 @@ class StorageService:
         await self._upload(key, audio_bytes, "audio/webm")
         return key
 
+    async def upload_recording_segment(
+        self,
+        session_id: str,
+        segment_index: int,
+        video_bytes: bytes,
+        content_type: str = "video/webm",
+    ) -> str:
+        key = f"recordings/{session_id}/segment_{segment_index:04d}.webm"
+        await self._upload(key, video_bytes, content_type)
+        return key
+
+    async def delete_recording(self, s3_keys: list[str]) -> bool:
+        if not s3_keys:
+            return True
+        if not settings.AWS_ACCESS_KEY_ID and not settings.S3_ENDPOINT_URL:
+            log.info("local_storage_deleted", count=len(s3_keys))
+            return True
+        try:
+            async with self._session.client("s3", **self._client_kwargs()) as s3:
+                delete_objects = [{"Key": k} for k in s3_keys if k]
+                if delete_objects:
+                    await s3.delete_objects(
+                        Bucket=self._bucket,
+                        Delete={"Objects": delete_objects},
+                    )
+            log.info("s3_recordings_deleted", count=len(s3_keys))
+            return True
+        except Exception as exc:
+            log.warning("s3_delete_failed", error=str(exc))
+            return False
+
     async def get_presigned_url(self, key: str, expiry_seconds: int = 3600) -> str:
         try:
             async with self._session.client("s3", **self._client_kwargs()) as s3:

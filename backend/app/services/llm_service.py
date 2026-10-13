@@ -540,3 +540,175 @@ class LLMService:
             "topic_scores": context.get("topic_scores", {"Distributed Systems Architecture": overall}),
             "total_turns": len(scores),
         }
+
+    async def analyze_student_requirements(
+        self,
+        chat_history: list[dict[str, str]],
+        custom_context: str | None = None,
+    ) -> dict[str, Any]:
+        """Conversational Requirement Understanding Agent for dynamic interview configuration."""
+        conversation_str = "\n".join(
+            f"{msg.get('role', 'user').upper()}: {msg.get('content', '')}"
+            for msg in chat_history
+        )
+        if custom_context:
+            conversation_str += f"\nADDITIONAL CONTEXT / RESUME / SYLLABUS: {custom_context}"
+
+        prompt = """
+You are the Principal AI Career Advisor and Requirement Understanding Agent for a Computer Science & Engineering (CSE) interview platform.
+Analyze the student's conversation history and understand their exact preparation needs dynamically instead of forcing a rigid template.
+
+Analyze if you have sufficient clarity to synthesize their interview configuration:
+1. Target role / tech / language (e.g. SDE-1, Full Stack, Backend, Java, Python, C++, React, DSA)
+2. Level (beginner, intermediate, advanced)
+3. Goal: college viva, internship, placement, faang, or specific company
+4. Mode: practice (with live hints/explanations during interview) vs exam (proctored, end-of-session evaluation only)
+5. Focus topics: e.g. DSA, Operating Systems, DBMS/SQL, Computer Networks, System Design
+
+If the student's input is too vague or lacks critical direction, set is_complete = false, provide an encouraging reply explaining what was understood, and ask ONE focused clarification question.
+If the student provided sufficient information (or explicitly said "start", "prepare me for TCS/Google", "test my React skills", etc.), synthesize the plan, set is_complete = true, set clarification_question = null, and provide a clear confirmation message.
+
+Return ONLY valid JSON matching this schema:
+{
+  "is_complete": bool,
+  "reply": str,
+  "clarification_question": str | null,
+  "plan": {
+    "target_role": str,
+    "subject_or_tech": str,
+    "level": "beginner" | "intermediate" | "advanced",
+    "goal_type": "viva" | "internship" | "placement" | "faang" | "company",
+    "target_company": str | null,
+    "mode": "practice" | "exam",
+    "question_count": int,
+    "starting_difficulty": "easy" | "medium" | "hard",
+    "topics": [str],
+    "allow_hints": bool,
+    "feedback_timing": "per_turn" | "end",
+    "time_limit_minutes": int,
+    "summary_rationale": str
+  }
+}
+"""
+        try:
+            res = await self._chat_json(prompt, conversation_str)
+            if "is_complete" in res:
+                return res
+        except Exception as e:
+            log.warning("student_requirement_analysis_llm_failed", error=str(e))
+
+        # Robust heuristic fallback if LLM is unavailable
+        text_lower = conversation_str.lower()
+        is_faang = any(w in text_lower for w in ["google", "amazon", "meta", "faang", "microsoft"])
+        is_beginner = "beginner" in text_lower or "basic" in text_lower or "viva" in text_lower
+        is_exam = "exam" in text_lower or "mock test" in text_lower or "proctored" in text_lower
+
+        topics = []
+        if any(w in text_lower for w in ["dsa", "algorithm", "data structure", "leetcode"]):
+            topics.append("Data Structures & Algorithms")
+        if any(w in text_lower for w in ["dbms", "sql", "database"]):
+            topics.append("DBMS & SQL Query Optimization")
+        if any(w in text_lower for w in ["os", "operating system", "thread", "process"]):
+            topics.append("Operating Systems & Concurrency")
+        if any(w in text_lower for w in ["network", "tcp", "http"]):
+            topics.append("Computer Networks & Protocols")
+        if any(w in text_lower for w in ["react", "web", "frontend", "fullstack", "node"]):
+            topics.append("Full-Stack Web Engineering")
+        if not topics:
+            topics = ["Data Structures & Algorithms", "Core CS Fundamentals", "System Architecture"]
+
+        return {
+            "is_complete": len(chat_history) >= 2 or len(conversation_str) > 60,
+            "reply": "I've tailored a customized interview session plan matching your CSE preparation goals.",
+            "clarification_question": None if len(chat_history) >= 2 else "What specific role or company are you targeting?",
+            "plan": {
+                "target_role": "FAANG Software Engineer" if is_faang else "Campus Placement SDE-1",
+                "subject_or_tech": "Data Structures & Core CS",
+                "level": "beginner" if is_beginner else ("advanced" if is_faang else "intermediate"),
+                "goal_type": "faang" if is_faang else ("viva" if "viva" in text_lower else "placement"),
+                "target_company": "Google / Tier-1" if is_faang else "Campus Drives",
+                "mode": "exam" if is_exam else "practice",
+                "question_count": 8,
+                "starting_difficulty": "hard" if is_faang else "medium",
+                "topics": topics,
+                "allow_hints": not is_exam,
+                "feedback_timing": "end" if is_exam else "per_turn",
+                "time_limit_minutes": 20,
+                "summary_rationale": "Curated based on your current CSE competencies and target evaluation bar.",
+            },
+        }
+
+    async def generate_hint(
+        self,
+        question: str,
+        topic: str,
+        candidate_context: dict | None = None,
+    ) -> dict[str, Any]:
+        """Tutor Agent: generates a pedagogical hint without giving away the direct answer."""
+        system = """
+You are an expert AI Interview Tutor and CSE Mentor.
+The candidate asked for a hint on the following interview question.
+Do NOT reveal the complete solution or full code!
+Instead, provide a progressive hint: highlight invariant properties, relevant data structure choices, or algorithmic patterns (e.g. two pointers, sliding window, topological sort, ACID properties, cache eviction).
+
+Return ONLY valid JSON:
+{
+  "hint": str,
+  "level": 1,
+  "pedagogical_guidance": str
+}
+"""
+        user_msg = f"TOPIC: {topic}\nQUESTION: {question}\nCONTEXT: {json.dumps(candidate_context or {})}"
+        try:
+            return await self._chat_json(system, user_msg)
+        except Exception:
+            return {
+                "hint": f"Consider the time and space complexity constraints for {topic}. What intermediate data structure (e.g. hash map, min-heap, or frequency array) can optimize lookups?",
+                "level": 1,
+                "pedagogical_guidance": "Think about breaking the problem into subproblems or recognizing familiar algorithmic patterns.",
+            }
+
+    async def generate_explanation(
+        self,
+        question: str,
+        candidate_answer: str | None,
+        topic: str,
+    ) -> dict[str, Any]:
+        """Tutor Agent: produces an in-depth concept explanation, model answer, and pitfalls."""
+        system = """
+You are an award-winning Computer Science Professor & Staff Engineering Mentor.
+Explain the technical concept thoroughly for the interview question provided.
+Provide:
+1. Core conceptual breakdown (underlying principles)
+2. Ideal Model Answer demonstrating Staff-level mastery
+3. Key Takeaways
+4. Clean code snippet or architecture pattern (if relevant)
+5. Common pitfalls / edge cases that candidates fail on
+
+Return ONLY valid JSON:
+{
+  "core_concept": str,
+  "model_answer": str,
+  "key_takeaways": [str],
+  "code_snippet": str | null,
+  "common_pitfalls": [str]
+}
+"""
+        user_msg = f"TOPIC: {topic}\nQUESTION: {question}\nCANDIDATE_ATTEMPT: {candidate_answer or 'Candidate requested explanation'}"
+        try:
+            return await self._chat_json(system, user_msg)
+        except Exception:
+            return {
+                "core_concept": f"Fundamental engineering principles of {topic}.",
+                "model_answer": f"When addressing {question}, articulate the trade-offs, state transitions, asymptotic complexity, and edge cases clearly.",
+                "key_takeaways": [
+                    "Always state your assumptions before diving into implementation.",
+                    "Analyze Time and Space complexity explicitly.",
+                    "Handle empty, boundary, and concurrent edge conditions.",
+                ],
+                "code_snippet": None,
+                "common_pitfalls": [
+                    "Over-engineering simple requirements without clarifying scope.",
+                    "Neglecting memory overhead or cache-locality in large-scale scenarios.",
+                ],
+            }

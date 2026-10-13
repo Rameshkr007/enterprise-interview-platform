@@ -80,6 +80,7 @@ export default function Sidebar({
       items: [
         { name: 'Observability', icon: Activity, href: '/admin/observability' },
         { name: 'Diagnostics', icon: Settings, href: '/admin/diagnostics' },
+        { name: 'SaaS Plans & Credits', icon: Coins, href: '/pricing' },
       ],
     },
   ]

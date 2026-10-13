@@ -17,6 +17,7 @@ from app.models.skill_graph import CandidateSkillMastery, CustomSkillNode, Skill
 from app.models.sm2_card import SpacedRepetitionCard
 from app.models.pii_vault import PiiVaultEntry
 from app.models.subscription import Subscription, SubscriptionStatus, PaymentTransaction
+from app.models.recording import InterviewRecording, RecordingSegment, RecordingStatus
 
 __all__ = [
     "User",
@@ -61,5 +62,8 @@ __all__ = [
     "Subscription",
     "SubscriptionStatus",
     "PaymentTransaction",
+    "InterviewRecording",
+    "RecordingSegment",
+    "RecordingStatus",
 ]
 

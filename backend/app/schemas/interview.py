@@ -141,3 +141,104 @@ class SessionStateResponse(BaseModel):
 class WebSocketMessage(BaseModel):
     type: str  # "partial_transcript" | "question" | "error" | "complete"
     payload: dict
+
+
+# ─── Universal Student Requirement Agent Schemas ──────────────────────────────
+class ExtractedInterviewPlan(BaseModel):
+    target_role: str = "Software Development Engineer"
+    subject_or_tech: str = "Core CS & DSA"
+    level: str = "intermediate"  # "beginner" | "intermediate" | "advanced"
+    goal_type: str = "placement"  # "viva" | "internship" | "placement" | "faang" | "company"
+    target_company: str | None = None
+    mode: str = "practice"  # "practice" | "exam"
+    question_count: int = 8
+    starting_difficulty: str = "medium"
+    topics: list[str] = Field(default_factory=lambda: ["Data Structures", "Algorithms", "System Design"])
+    allow_hints: bool = True
+    feedback_timing: str = "per_turn"  # "per_turn" | "end"
+    time_limit_minutes: int = 20
+    summary_rationale: str = ""
+
+
+class RequirementAnalysisRequest(BaseModel):
+    chat_history: list[dict] = Field(default_factory=list)  # [{"role": "user"|"assistant", "content": "..."}]
+    message: str | None = None
+    resume_context: str | None = None
+    job_description_context: str | None = None
+    syllabus_context: str | None = None
+
+
+class RequirementAnalysisResponse(BaseModel):
+    is_complete: bool
+    reply: str
+    clarification_question: str | None = None
+    plan: ExtractedInterviewPlan | None = None
+
+
+# ─── Tutor Agent Schemas ──────────────────────────────────────────────────────
+class HintRequest(BaseModel):
+    turn_index: int
+    current_question: str
+    topic: str | None = None
+    candidate_context: str | None = None
+
+
+class HintResponse(BaseModel):
+    hint: str
+    level: int = 1
+    pedagogical_guidance: str = ""
+
+
+class ExplanationRequest(BaseModel):
+    turn_index: int
+    current_question: str
+    candidate_answer: str | None = None
+    topic: str | None = None
+
+
+class ExplanationResponse(BaseModel):
+    core_concept: str
+    model_answer: str
+    key_takeaways: list[str] = Field(default_factory=list)
+    code_snippet: str | None = None
+    common_pitfalls: list[str] = Field(default_factory=list)
+
+
+# ─── Session Management Schemas ───────────────────────────────────────────────
+class PauseSessionRequest(BaseModel):
+    action: str = "pause"  # "pause" | "resume"
+    active_duration_s: float | None = None
+
+
+class PauseSessionResponse(BaseModel):
+    session_id: str
+    status: str
+    is_paused: bool
+    active_seconds: float
+    paused_seconds: float
+
+
+# ─── Video & Audio Recording Schemas ──────────────────────────────────────────
+class RecordingSegmentUploadRequest(BaseModel):
+    session_id: UUID
+    segment_index: int
+    duration_s: float = 10.0
+    media_type: str = "video/webm"
+    data_b64: str
+
+
+class RecordingSegmentResponse(BaseModel):
+    segment_id: str
+    session_id: str
+    segment_index: int
+    status: str
+    s3_key: str
+
+
+class RecordingPlaybackResponse(BaseModel):
+    session_id: str
+    has_recording: bool
+    status: str
+    playback_url: str | None = None
+    total_duration_s: float = 0.0
+    segments_count: int = 0

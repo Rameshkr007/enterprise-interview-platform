@@ -1627,3 +1627,66 @@ export interface MaintenanceModeResponse {
   updated_at: string
   toggled_by?: string | null
 }
+
+// ── Personal AI Interview Agent & Recording ──────────────────────────────────
+export interface ExtractedInterviewPlan {
+  target_role: string
+  subject_or_tech: string
+  level: 'beginner' | 'intermediate' | 'advanced'
+  goal_type: 'viva' | 'internship' | 'placement' | 'faang' | 'company'
+  target_company?: string | null
+  mode: 'practice' | 'exam'
+  question_count: number
+  starting_difficulty: 'easy' | 'medium' | 'hard'
+  topics: string[]
+  allow_hints: boolean
+  feedback_timing: 'per_turn' | 'end'
+  time_limit_minutes: number
+  summary_rationale: string
+}
+
+export interface RequirementAnalysisResponse {
+  is_complete: boolean
+  reply: string
+  clarification_question?: string | null
+  plan?: ExtractedInterviewPlan | null
+}
+
+export interface HintResponse {
+  hint: string
+  level: number
+  pedagogical_guidance: string
+}
+
+export interface ExplanationResponse {
+  core_concept: string
+  model_answer: string
+  key_takeaways: string[]
+  code_snippet?: string | null
+  common_pitfalls: string[]
+}
+
+export interface PauseSessionResponse {
+  session_id: string
+  status: string
+  is_paused: boolean
+  active_seconds: number
+  paused_seconds: number
+}
+
+export interface RecordingSegmentResponse {
+  segment_id: string
+  session_id: string
+  segment_index: number
+  status: string
+  s3_key: string
+}
+
+export interface RecordingPlaybackResponse {
+  session_id: string
+  has_recording: boolean
+  status: string
+  playback_url?: string | null
+  total_duration_s: number
+  segments_count: number
+}

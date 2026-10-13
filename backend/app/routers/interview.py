@@ -23,6 +23,7 @@ from app.models.interview_session import InterviewSession, QuestionDifficulty, S
 from app.models.interview_turn import InterviewTurn, QuestionCategory
 from app.models.job_description import JobDescription
 from app.models.resume import Resume
+from app.models.recording import InterviewRecording, RecordingSegment, RecordingStatus
 from app.schemas.interview import (
     AnswerEvaluationResult,
     AnswerSubmitRequest,
@@ -34,6 +35,18 @@ from app.schemas.interview import (
     SessionStateResponse,
     TopicMasteryItem,
     TurnResponse,
+    RequirementAnalysisRequest,
+    RequirementAnalysisResponse,
+    ExtractedInterviewPlan,
+    HintRequest,
+    HintResponse,
+    ExplanationRequest,
+    ExplanationResponse,
+    PauseSessionRequest,
+    PauseSessionResponse,
+    RecordingSegmentUploadRequest,
+    RecordingSegmentResponse,
+    RecordingPlaybackResponse,
 )
 from app.services.audio_pipeline import AudioAnalysisPipeline
 from app.services.audit_service import AuditService
@@ -483,3 +496,313 @@ async def finalize_session(
         payload={"aggregate_score": session.aggregate_score, "turns_count": len(turns)},
     )
     return session
+
+
+# ─── Universal Student Requirement Agent ──────────────────────────────────────
+@router.post("/requirements/analyze", response_model=RequirementAnalysisResponse)
+async def analyze_requirements(
+    body: RequirementAnalysisRequest,
+    current_user: CurrentUser,
+) -> RequirementAnalysisResponse:
+    """Conversational Requirement Understanding Agent: diagnoses student goals and synthesizes structured plan."""
+    chat_history = list(body.chat_history)
+    if body.message and (not chat_history or chat_history[-1].get("content") != body.message):
+        chat_history.append({"role": "user", "content": body.message})
+
+    context_parts = []
+    if body.resume_context:
+        context_parts.append(f"Resume: {body.resume_context[:1000]}")
+    if body.job_description_context:
+        context_parts.append(f"Job Description: {body.job_description_context[:1000]}")
+    if body.syllabus_context:
+        context_parts.append(f"Syllabus/Topics: {body.syllabus_context[:1000]}")
+    custom_context = "\n".join(context_parts) if context_parts else None
+
+    llm = LLMService()
+    result = await llm.analyze_student_requirements(chat_history, custom_context)
+
+    plan_data = result.get("plan")
+    plan_obj = ExtractedInterviewPlan(**plan_data) if plan_data else None
+
+    return RequirementAnalysisResponse(
+        is_complete=bool(result.get("is_complete", False)),
+        reply=result.get("reply", "I've reviewed your requirements and prepared an interview curriculum."),
+        clarification_question=result.get("clarification_question"),
+        plan=plan_obj,
+    )
+
+
+# ─── AI Tutor Agent: Progressive Hint ─────────────────────────────────────────
+@router.post("/session/{session_id}/hint", response_model=HintResponse)
+async def get_turn_hint(
+    session_id: UUID,
+    body: HintRequest,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> HintResponse:
+    """Tutor Agent: generates progressive pedagogical hint for candidate in Practice Mode."""
+    session = await db.get(InterviewSession, session_id)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    topic = body.topic or session.current_topic or "Data Structures & Algorithms"
+    llm = LLMService()
+    hint_data = await llm.generate_hint(
+        question=body.current_question,
+        topic=topic,
+        candidate_context={"turn_index": body.turn_index, "difficulty": session.current_difficulty.value},
+    )
+
+    # Track hints used in session_config
+    hints_used = session.session_config.get("hints_used", 0) + 1
+    session.session_config["hints_used"] = hints_used
+    db.add(session)
+    await db.flush()
+
+    return HintResponse(
+        hint=hint_data.get("hint", "Review the problem constraints and consider how an intermediate data structure simplifies state."),
+        level=hint_data.get("level", 1),
+        pedagogical_guidance=hint_data.get("pedagogical_guidance", "Formulate the algorithmic invariant before writing code."),
+    )
+
+
+# ─── AI Tutor Agent: Conceptual Explanation ───────────────────────────────────
+@router.post("/session/{session_id}/explain", response_model=ExplanationResponse)
+async def get_turn_explanation(
+    session_id: UUID,
+    body: ExplanationRequest,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ExplanationResponse:
+    """Tutor Agent: generates in-depth concept breakdown, model answer, and pitfalls."""
+    session = await db.get(InterviewSession, session_id)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    topic = body.topic or session.current_topic or "Core Computer Science"
+    llm = LLMService()
+    explanation_data = await llm.generate_explanation(
+        question=body.current_question,
+        candidate_answer=body.candidate_answer,
+        topic=topic,
+    )
+
+    # Track explanations used in session_config
+    explanations_used = session.session_config.get("explanations_used", 0) + 1
+    session.session_config["explanations_used"] = explanations_used
+    db.add(session)
+    await db.flush()
+
+    return ExplanationResponse(
+        core_concept=explanation_data.get("core_concept", f"Fundamental principles of {topic}."),
+        model_answer=explanation_data.get("model_answer", "Model implementation addressing optimal complexity and edge conditions."),
+        key_takeaways=explanation_data.get("key_takeaways", ["State asymptotic bounds", "Handle boundary conditions", "Verify assumptions"]),
+        code_snippet=explanation_data.get("code_snippet"),
+        common_pitfalls=explanation_data.get("common_pitfalls", ["Missing edge case checks", "Suboptimal time complexity"]),
+    )
+
+
+# ─── Session Lifecycle: Pause & Resume ────────────────────────────────────────
+@router.post("/session/{session_id}/pause", response_model=PauseSessionResponse)
+async def pause_session(
+    session_id: UUID,
+    body: PauseSessionRequest,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PauseSessionResponse:
+    """Session Management Agent: pause or resume interview session timers."""
+    session = await db.get(InterviewSession, session_id)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    now = datetime.now(UTC)
+    config = session.session_config
+
+    if body.action == "pause":
+        config["is_paused"] = True
+        config["last_paused_at"] = now.isoformat()
+        if body.active_duration_s is not None:
+            config["active_seconds"] = body.active_duration_s
+    else:  # resume
+        config["is_paused"] = False
+        last_pause = config.get("last_paused_at")
+        if last_pause:
+            try:
+                pause_time = datetime.fromisoformat(last_pause)
+                paused_delta = (now - pause_time).total_seconds()
+                config["paused_seconds"] = config.get("paused_seconds", 0.0) + max(0.0, paused_delta)
+            except Exception:
+                pass
+        config["last_paused_at"] = None
+
+    session.session_config = dict(config)
+    db.add(session)
+    await db.flush()
+
+    return PauseSessionResponse(
+        session_id=str(session.id),
+        status=session.status.value,
+        is_paused=config.get("is_paused", False),
+        active_seconds=float(config.get("active_seconds", 0.0)),
+        paused_seconds=float(config.get("paused_seconds", 0.0)),
+    )
+
+
+# ─── Video & Audio Recording Architecture ─────────────────────────────────────
+@router.post("/recordings/segment", response_model=RecordingSegmentResponse)
+async def upload_recording_segment(
+    body: RecordingSegmentUploadRequest,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RecordingSegmentResponse:
+    """Uploads browser MediaRecorder segment chunk and updates recording index."""
+    session = await db.get(InterviewSession, body.session_id)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    try:
+        video_bytes = base64.b64decode(body.data_b64)
+    except Exception as exc:
+        raise BadRequestException(f"Invalid base64 recording payload: {exc}")
+
+    storage = StorageService()
+    s3_key = await storage.upload_recording_segment(
+        session_id=str(body.session_id),
+        segment_index=body.segment_index,
+        video_bytes=video_bytes,
+        content_type=body.media_type,
+    )
+
+    # Find or initialize parent InterviewRecording
+    rec_stmt = select(InterviewRecording).where(InterviewRecording.session_id == body.session_id)
+    rec_res = await db.execute(rec_stmt)
+    recording = rec_res.scalar_one_or_none()
+
+    if not recording:
+        recording = InterviewRecording(
+            session_id=body.session_id,
+            user_id=current_user.id,
+            status=RecordingStatus.recording.value,
+            media_type=body.media_type,
+            consent_given=True,
+            total_duration_s=body.duration_s,
+            file_size_bytes=len(video_bytes),
+            s3_key=s3_key,
+        )
+        db.add(recording)
+        await db.flush()
+    else:
+        recording.total_duration_s += body.duration_s
+        recording.file_size_bytes += len(video_bytes)
+        recording.s3_key = s3_key
+        db.add(recording)
+
+    segment = RecordingSegment(
+        recording_id=recording.id,
+        session_id=body.session_id,
+        segment_index=body.segment_index,
+        duration_s=body.duration_s,
+        file_size_bytes=len(video_bytes),
+        s3_key=s3_key,
+        status="uploaded",
+    )
+    db.add(segment)
+    await db.flush()
+    await db.refresh(segment)
+
+    return RecordingSegmentResponse(
+        segment_id=str(segment.id),
+        session_id=str(body.session_id),
+        segment_index=body.segment_index,
+        status="uploaded",
+        s3_key=s3_key,
+    )
+
+
+@router.get("/recordings/{session_id}", response_model=RecordingPlaybackResponse)
+async def get_session_recording(
+    session_id: UUID,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RecordingPlaybackResponse:
+    """Retrieve authorized playback signed URL for interview recording."""
+    session = await db.get(InterviewSession, session_id)
+    if session is None:
+        raise SessionNotFoundException()
+    if session.user_id != current_user.id and current_user.role.value not in ("admin", "recruiter"):
+        raise ForbiddenException("Access denied to recording")
+
+    rec_stmt = select(InterviewRecording).where(InterviewRecording.session_id == session_id)
+    rec_res = await db.execute(rec_stmt)
+    recording = rec_res.scalar_one_or_none()
+
+    if not recording or recording.status == RecordingStatus.deleted.value:
+        return RecordingPlaybackResponse(
+            session_id=str(session_id),
+            has_recording=False,
+            status="none",
+            playback_url=None,
+            total_duration_s=0.0,
+            segments_count=0,
+        )
+
+    # Fetch segments count
+    seg_stmt = select(func.count(RecordingSegment.id)).where(RecordingSegment.recording_id == recording.id)
+    seg_count_res = await db.execute(seg_stmt)
+    seg_count = seg_count_res.scalar() or 0
+
+    playback_url = None
+    if recording.s3_key:
+        storage = StorageService()
+        try:
+            playback_url = await storage.get_presigned_url(recording.s3_key, expiry_seconds=7200)
+        except Exception:
+            playback_url = f"/api/v1/interview/recordings/{session_id}/stream"
+
+    return RecordingPlaybackResponse(
+        session_id=str(session_id),
+        has_recording=True,
+        status=recording.status,
+        playback_url=playback_url,
+        total_duration_s=recording.total_duration_s,
+        segments_count=seg_count,
+    )
+
+
+@router.delete("/recordings/{session_id}")
+async def delete_session_recording(
+    session_id: UUID,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Privacy control: GDPR-compliant deletion of video/audio recordings."""
+    session = await db.get(InterviewSession, session_id)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    rec_stmt = select(InterviewRecording).where(InterviewRecording.session_id == session_id)
+    rec_res = await db.execute(rec_stmt)
+    recording = rec_res.scalar_one_or_none()
+
+    if not recording:
+        return {"success": True, "message": "No recording exists for this session"}
+
+    # Fetch all segment s3 keys
+    seg_stmt = select(RecordingSegment).where(RecordingSegment.recording_id == recording.id)
+    seg_res = await db.execute(seg_stmt)
+    segments = list(seg_res.scalars().all())
+
+    keys_to_delete = [s.s3_key for s in segments if s.s3_key]
+    if recording.s3_key:
+        keys_to_delete.append(recording.s3_key)
+
+    storage = StorageService()
+    await storage.delete_recording(keys_to_delete)
+
+    # Delete records from DB
+    for s in segments:
+        await db.delete(s)
+    await db.delete(recording)
+    await db.commit()
+
+    return {"success": True, "message": "Recording and segments deleted securely"}

@@ -5,6 +5,10 @@ from app.schemas.interview import (
     TurnResponse, NextQuestionResponse, WebSocketMessage,
     AnswerEvaluationResult, InterviewPlanItem, TopicMasteryItem,
     FinalEvaluationSummary, SessionStateResponse,
+    ExtractedInterviewPlan, RequirementAnalysisRequest, RequirementAnalysisResponse,
+    HintRequest, HintResponse, ExplanationRequest, ExplanationResponse,
+    PauseSessionRequest, PauseSessionResponse,
+    RecordingSegmentUploadRequest, RecordingSegmentResponse, RecordingPlaybackResponse,
 )
 from app.schemas.report import ReportResponse
 from app.schemas.learning import (
@@ -82,6 +86,10 @@ __all__ = [
     "TurnResponse", "NextQuestionResponse", "WebSocketMessage",
     "AnswerEvaluationResult", "InterviewPlanItem", "TopicMasteryItem",
     "FinalEvaluationSummary", "SessionStateResponse",
+    "ExtractedInterviewPlan", "RequirementAnalysisRequest", "RequirementAnalysisResponse",
+    "HintRequest", "HintResponse", "ExplanationRequest", "ExplanationResponse",
+    "PauseSessionRequest", "PauseSessionResponse",
+    "RecordingSegmentUploadRequest", "RecordingSegmentResponse", "RecordingPlaybackResponse",
     "ReportResponse",
     "PlanCreateRequest", "DayCompleteRequest", "ReassessmentSubmitRequest",
     "LearningPlanResponse", "ReassessmentResultResponse",
