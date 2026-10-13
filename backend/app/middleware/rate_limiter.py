@@ -20,12 +20,12 @@ _local_rate_cache: dict[str, collections.deque[float]] = collections.defaultdict
 )
 
 ROUTE_LIMITS: dict[str, int] = {
-    "/api/v1/auth/login": 10,
-    "/api/v1/auth/register": 10,
-    "/api/v1/coding/execute": 15,
-    "/api/v1/ats/analyze": 15,
-    "/api/v1/interview/session": 20,
-    "/api/v1/interview/answer": 30,
+    "/api/v1/auth/login": 30,
+    "/api/v1/auth/register": 30,
+    "/api/v1/coding/execute": 60,
+    "/api/v1/ats/analyze": 60,
+    "/api/v1/interview/session": 120,
+    "/api/v1/interview/answer": 60,
 }
 
 
@@ -43,7 +43,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     DEFAULT_LIMIT = 120
     WINDOW_SECONDS = 60
 
-    # Whitelist paths from strict rate limiting (health, metrics, docs)
+    # Whitelist paths from strict rate limiting (health, metrics, docs, streaming segments, advisor)
     EXEMPT_PATHS = {
         "/health",
         "/metrics",
@@ -52,6 +52,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         "/api/openapi.json",
         "/api/v1/observability/health/deep",
         "/api/v1/observability/metrics/prometheus",
+        "/api/v1/interview/requirements/analyze",
+        "/api/v1/interview/recordings/segment",
     }
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
@@ -62,13 +64,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             response.headers["X-RateLimit-Remaining"] = "unlimited"
             return response
 
-        # Extract client key: bearer token sub or IP
+        # Extract client key: bearer token sub or IP + fingerprint
         auth_header = request.headers.get("Authorization")
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
-            client_key = forwarded.split(",")[0].strip()
+            client_ip = forwarded.split(",")[0].strip()
         else:
-            client_key = request.client.host if request.client else "127.0.0.1"
+            client_ip = request.client.host if request.client else "127.0.0.1"
+
+        client_id_hdr = request.headers.get("X-Client-Id") or request.headers.get("X-Session-Id")
+        if client_id_hdr:
+            client_key = f"guest:{client_ip}:{client_id_hdr}"
+        else:
+            ua_hash = str(abs(hash(request.headers.get("User-Agent", "default"))))[:6]
+            client_key = f"ip:{client_ip}:{ua_hash}"
+
         limit = self.DEFAULT_LIMIT
 
         if auth_header and auth_header.startswith("Bearer "):
@@ -87,13 +97,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 else:
                     limit = 120
             except Exception:
-                limit = 60
+                limit = 120
         else:
-            limit = 60
+            limit = 120
 
-        # Apply route-specific throttle if matching
-        for route_prefix, r_limit in ROUTE_LIMITS.items():
-            if path.startswith(route_prefix):
+        # Apply route-specific throttle only for exact matching sensitive endpoints
+        for route_pattern, r_limit in ROUTE_LIMITS.items():
+            if path == route_pattern:
                 limit = min(limit, r_limit)
                 break
 
@@ -131,7 +141,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             redis = get_redis_client()
             redis_key = f"ratelimit:{client_key}"
             pipe = redis.pipeline()
-            pipe.zremrangebyscore(redis_key, 0, now - self.WINDOW_SECONDS)
+            pipe.zremrangebyscore(redis_key, 0, window_start)
             pipe.zadd(redis_key, {str(now): now})
             pipe.zcard(redis_key)
             pipe.expire(redis_key, self.WINDOW_SECONDS + 5)
@@ -149,7 +159,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 timestamps.popleft()
 
             if len(timestamps) >= limit:
-                return False, 0, self.WINDOW_SECONDS
+                retry_after = max(1, int(self.WINDOW_SECONDS - (now - timestamps[0]))) if timestamps else self.WINDOW_SECONDS
+                return False, 0, retry_after
 
             timestamps.append(now)
             remaining = limit - len(timestamps)

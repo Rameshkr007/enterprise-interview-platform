@@ -439,7 +439,16 @@ export default function NewInterviewPage() {
       setSession(session)
       router.push(`/interview/${session.id}`)
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'Failed to initialize session.')
+      let msg = 'Failed to initialize session.'
+      if (err?.response?.data?.message) {
+        msg = err.response.data.message
+      } else if (err?.response?.data?.detail) {
+        const detail = err.response.data.detail
+        msg = typeof detail === 'string' ? detail : detail[0]?.msg || JSON.stringify(detail)
+      } else if (err?.message) {
+        msg = err.message
+      }
+      setError(msg)
       setIsCreating(false)
     }
   }
@@ -476,7 +485,9 @@ export default function NewInterviewPage() {
       router.push(`/interview/${session.id}`)
     } catch (err: any) {
       let msg = 'Failed to initialize interview session.'
-      if (err?.response?.data?.detail) {
+      if (err?.response?.data?.message) {
+        msg = err.response.data.message
+      } else if (err?.response?.data?.detail) {
         const detail = err.response.data.detail
         msg = typeof detail === 'string' ? detail : detail[0]?.msg || JSON.stringify(detail)
       } else if (err?.message) {
@@ -609,17 +620,40 @@ export default function NewInterviewPage() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <div className="font-bold">Notice</div>
-                <div className="text-xs text-red-300/80 mt-0.5">{error}</div>
+                <div className="font-bold flex items-center gap-2">
+                  <span>Session Launch Alert</span>
+                  {error.includes('Rate limit') || error.includes('429') ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                      High Traffic
+                    </span>
+                  ) : null}
+                </div>
+                <div className="text-xs text-red-300/80 mt-1">{error}</div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setError(null)}
-              className="text-xs text-red-400 hover:text-white font-mono cursor-pointer"
-            >
-              Dismiss
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  if (activeTab === 'advisor' && extractedPlan) {
+                    launchFromExtractedPlan()
+                  } else {
+                    launchFromBlueprint()
+                  }
+                }}
+                className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-xs text-red-200 border border-red-500/40 cursor-pointer font-medium transition-all"
+              >
+                Retry Launch
+              </button>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="text-xs text-red-400 hover:text-white font-mono cursor-pointer px-1.5 py-1"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
 

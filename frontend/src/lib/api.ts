@@ -145,10 +145,17 @@ function createAxiosInstance(): AxiosInstance {
 
   instance.interceptors.request.use((config) => {
     config.baseURL = getBaseUrl()
-    if (typeof window !== 'undefined' && config.data instanceof FormData) {
-      delete config.headers['Content-Type']
-    }
     if (typeof window !== 'undefined') {
+      if (config.data instanceof FormData) {
+        delete config.headers['Content-Type']
+      }
+      let clientId = localStorage.getItem('client_uuid')
+      if (!clientId) {
+        clientId = 'c_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36)
+        localStorage.setItem('client_uuid', clientId)
+      }
+      config.headers['X-Client-Id'] = clientId
+
       const token = localStorage.getItem('access_token')
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
@@ -160,7 +167,16 @@ function createAxiosInstance(): AxiosInstance {
   instance.interceptors.response.use(
     (res) => res,
     async (err: AxiosError) => {
-      const originalRequest = err.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined
+      const originalRequest = err.config as (InternalAxiosRequestConfig & { _retry?: boolean; _retry429?: boolean }) | undefined
+
+      // Automatic backoff retry on HTTP 429 rate limit
+      if (err.response?.status === 429 && originalRequest && !originalRequest._retry429) {
+        originalRequest._retry429 = true
+        const retryHeader = (err.response.headers as any)?.['retry-after']
+        const waitMs = retryHeader && !isNaN(Number(retryHeader)) ? Math.min(Number(retryHeader) * 1000, 3000) : 2000
+        await new Promise((r) => setTimeout(r, waitMs))
+        return instance(originalRequest)
+      }
 
       if (err.response?.status === 401 && originalRequest && !originalRequest._retry) {
         if (typeof window === 'undefined') {
