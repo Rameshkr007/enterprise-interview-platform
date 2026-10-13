@@ -45,6 +45,29 @@ async def get_current_user(
     return user
 
 
+async def get_optional_user(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> User | None:
+    if credentials is None:
+        return None
+    try:
+        token = credentials.credentials
+        payload = decode_access_token(token)
+        jti = payload.get("jti")
+        if jti and await is_token_blacklisted(jti):
+            return None
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        result = await db.execute(
+            select(User).where(User.id == UUID(user_id), User.is_active.is_(True))
+        )
+        return result.scalar_one_or_none()
+    except Exception:
+        return None
+
+
 async def get_current_tenant(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -89,6 +112,7 @@ RequireRole = require_role
 
 # Convenience type aliases
 CurrentUser = Annotated[User, Depends(get_current_user)]
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 CurrentTenant = Annotated[Organization | None, Depends(get_current_tenant)]
 RequiredTenant = Annotated[Organization, Depends(require_tenant)]
 

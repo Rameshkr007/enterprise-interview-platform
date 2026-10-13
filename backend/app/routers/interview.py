@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import CurrentUser
+from app.core.dependencies import CurrentUser, OptionalUser
 from app.core.exceptions import (
     BadRequestException,
     ForbiddenException,
@@ -502,7 +502,7 @@ async def finalize_session(
 @router.post("/requirements/analyze", response_model=RequirementAnalysisResponse)
 async def analyze_requirements(
     body: RequirementAnalysisRequest,
-    current_user: CurrentUser,
+    current_user: OptionalUser = None,
 ) -> RequirementAnalysisResponse:
     """Conversational Requirement Understanding Agent: diagnoses student goals and synthesizes structured plan."""
     chat_history = list(body.chat_history)
