@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 from openai import AsyncOpenAI
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import get_settings
 from app.core.exceptions import LLMServiceException
@@ -147,11 +147,24 @@ Return ONLY valid JSON:
 """
 
 
+_openai_quota_exhausted = False
+
+
+def _should_retry_llm_call(exc: BaseException) -> bool:
+    err_str = str(exc).lower()
+    if "insufficient_quota" in err_str or "credit_balance_exhausted" in err_str:
+        return False
+    return True
+
+
 class LLMService:
     def __init__(self) -> None:
         self._client = _get_client()
 
     def _is_mock_env(self) -> bool:
+        global _openai_quota_exhausted
+        if _openai_quota_exhausted:
+            return True
         key = settings.OPENAI_API_KEY or ""
         return (
             not key
@@ -162,16 +175,17 @@ class LLMService:
         )
 
     @retry(
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception(_should_retry_llm_call),
         stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=1, max=4),
+        wait=wait_exponential(multiplier=1, min=1, max=3),
         reraise=True,
     )
     async def _chat_json(
         self, system: str, user: str, model: str | None = None
     ) -> dict[str, Any]:
-        if self._is_mock_env():
-            raise LLMServiceException("Mock API key in use, fallback required")
+        global _openai_quota_exhausted
+        if _openai_quota_exhausted or self._is_mock_env():
+            raise LLMServiceException("OpenAI quota exhausted or offline mode active; using adaptive heuristic engine.")
 
         model = model or settings.OPENAI_CHAT_MODEL
         try:
@@ -190,8 +204,13 @@ class LLMService:
         except json.JSONDecodeError as exc:
             raise LLMServiceException(f"LLM returned non-JSON: {exc}") from exc
         except Exception as exc:
-            log.error("llm_chat_failed", model=model, error=str(exc))
-            raise LLMServiceException(str(exc)) from exc
+            err_msg = str(exc)
+            if "insufficient_quota" in err_msg or "credit_balance_exhausted" in err_msg:
+                _openai_quota_exhausted = True
+                log.warning("openai_quota_exhausted_fallback_enabled", error=err_msg)
+            else:
+                log.error("llm_chat_failed", model=model, error=err_msg)
+            raise LLMServiceException(err_msg) from exc
 
     async def analyze_skill_gaps(
         self,

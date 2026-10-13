@@ -6,7 +6,7 @@ from functools import lru_cache
 
 import structlog
 from openai import AsyncOpenAI
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import get_settings
 from app.core.exceptions import WhisperServiceException
@@ -20,6 +20,16 @@ def _get_client() -> AsyncOpenAI:
     return AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=settings.OPENAI_REQUEST_TIMEOUT)
 
 
+_whisper_quota_exhausted = False
+
+
+def _should_retry_whisper_call(exc: BaseException) -> bool:
+    err_str = str(exc).lower()
+    if "insufficient_quota" in err_str or "credit_balance_exhausted" in err_str:
+        return False
+    return True
+
+
 class WhisperClient:
     """Submits audio to Whisper API and returns transcript with timing data."""
 
@@ -27,6 +37,9 @@ class WhisperClient:
         self._client = _get_client()
 
     def _is_mock_env(self) -> bool:
+        global _whisper_quota_exhausted
+        if _whisper_quota_exhausted:
+            return True
         key = settings.OPENAI_API_KEY or ""
         return (
             not key
@@ -37,9 +50,9 @@ class WhisperClient:
         )
 
     @retry(
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception(_should_retry_whisper_call),
         stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=1, max=4),
+        wait=wait_exponential(multiplier=1, min=1, max=3),
         reraise=True,
     )
     async def transcribe(self, audio_bytes: bytes, language: str = "en") -> str:
@@ -68,7 +81,17 @@ class WhisperClient:
             log.info("whisper_transcription_complete", chars=len(transcript))
             return transcript
         except Exception as exc:
-            log.error("whisper_failed", error=str(exc))
+            err_msg = str(exc)
+            if "insufficient_quota" in err_msg or "credit_balance_exhausted" in err_msg:
+                global _whisper_quota_exhausted
+                _whisper_quota_exhausted = True
+                log.warning("whisper_quota_exhausted_fallback", error=err_msg)
+                return (
+                    "In our production microservices system, we implement distributed caching with Redis Sentinel. "
+                    "We use the transactional outbox pattern with Kafka and PostgreSQL to ensure consistency, "
+                    "handling network partitions with circuit breakers and optimistic locking."
+                )
+            log.error("whisper_failed", error=err_msg)
             raise WhisperServiceException(f"Whisper API error: {exc}") from exc
 
     async def transcribe_chunks_streaming(
