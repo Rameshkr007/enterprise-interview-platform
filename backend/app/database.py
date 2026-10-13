@@ -28,13 +28,17 @@ def _build_engine(test_mode: bool = False) -> AsyncEngine:
     if test_mode:
         kwargs["poolclass"] = NullPool
     else:
-        kwargs["pool_size"] = settings.DB_POOL_SIZE
-        kwargs["max_overflow"] = settings.DB_MAX_OVERFLOW
+        if "pooler.supabase.com" in str(settings.DATABASE_URL) or "supabase" in str(settings.DATABASE_URL):
+            # Supabase free-tier connection pooler has pool_size capped at 15 clients in session mode.
+            kwargs["pool_size"] = min(settings.DB_POOL_SIZE, 4)
+            kwargs["max_overflow"] = min(settings.DB_MAX_OVERFLOW, 2)
+            kwargs["connect_args"] = {"prepared_statement_cache_size": 0}
+        else:
+            kwargs["pool_size"] = settings.DB_POOL_SIZE
+            kwargs["max_overflow"] = settings.DB_MAX_OVERFLOW
         kwargs["pool_timeout"] = settings.DB_POOL_TIMEOUT
         kwargs["pool_pre_ping"] = True
         kwargs["pool_recycle"] = 3600
-        if "pooler.supabase.com" in str(settings.DATABASE_URL) or "supabase" in str(settings.DATABASE_URL):
-            kwargs["connect_args"] = {"prepared_statement_cache_size": 0}
 
     return create_async_engine(str(settings.DATABASE_URL), **kwargs)
 
